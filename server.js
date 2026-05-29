@@ -8,10 +8,20 @@ import { collectDefaultMetrics } from 'prom-client'
 
 collectDefaultMetrics({ prefix: 'atlas_fit_' })
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PORT      = process.env.PORT      ? parseInt(process.env.PORT, 10) : 3457
+const __dirname  = path.dirname(fileURLToPath(import.meta.url))
+const PORT       = process.env.PORT      ? parseInt(process.env.PORT, 10) : 3457
 const HEALTH_DIR = process.env.HEALTH_DIR ?? path.join(__dirname, '../../data/health')
 const ATLAS_URL  = process.env.ATLAS_URL  ?? 'http://localhost:3456'
+
+// Preload shared exercise library (synced by tools/scripts/sync-exercises.js)
+let _exerciseLibrary = null
+async function getExerciseLibrary(planFallback = []) {
+  if (!_exerciseLibrary) {
+    const data = await readJSON(path.join(HEALTH_DIR, 'exercise-library.json'))
+    _exerciseLibrary = data?.exercises ?? null
+  }
+  return _exerciseLibrary ?? planFallback
+}
 
 const app = express()
 app.set('views', path.join(__dirname, 'views'))
@@ -54,7 +64,7 @@ function getSessionType(session) {
   return 'rest'
 }
 
-function buildWeeklyProgress(workouts, plan) {
+async function buildWeeklyProgress(workouts, plan) {
   const now    = new Date()
   const dow    = now.getDay()
   const monday = new Date(now)
@@ -67,7 +77,7 @@ function buildWeeklyProgress(workouts, plan) {
   const currentPhaseNum = plan.current_phase || 1
   const currentWeek     = plan.current_week  || 1
   const currentPhase    = (plan.phases || []).find(p => p.phase === currentPhaseNum)
-  const exerciseLib     = plan.exercise_library || []
+  const exerciseLib     = await getExerciseLibrary(plan.exercise_library || [])
 
   const phaseSchedule = {
     1: [{ day: 'Mon', dow: 1 }, { day: 'Wed', dow: 3 }, { day: 'Fri', dow: 5 }],
@@ -297,7 +307,7 @@ app.get('/training', async (_req, res) => {
   const weeksToNextBenchmark = nextBenchmark ? nextBenchmark - currentWeek : 0
 
   const workouts        = fitnessData?.workouts || []
-  const weeklyProgress  = buildWeeklyProgress(workouts, plan)
+  const weeklyProgress  = await buildWeeklyProgress(workouts, plan)
   const sessionType     = getSessionType(todaySession)
   const sessionTypeColors = SESSION_TYPE_COLORS[sessionType] || SESSION_TYPE_COLORS.rest
   const nextSessionType   = nextSession ? getSessionType(nextSession) : null
