@@ -363,7 +363,7 @@ app.get('/api/widget/summary', async (_req, res) => {
 
     const plan     = planData || {}
     const workouts = fitnessData?.workouts || []
-    const progress = buildWeeklyProgress(workouts, plan)
+    const progress = await buildWeeklyProgress(workouts, plan)
 
     const dow      = new Date().getDay()
     const phases   = plan.phases || []
